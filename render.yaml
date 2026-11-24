@@ -4,6 +4,7 @@ services:
     name: task-manager-api
     runtime: node
     plan: free
+    region: ohio # same region as the Neon database (AWS us-east-2)
     rootDir: server
     # --include=dev: TypeScript is a devDependency and is needed to build.
     buildCommand: npm ci --include=dev && npm run build
