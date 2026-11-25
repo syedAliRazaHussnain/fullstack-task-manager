@@ -40,9 +40,7 @@ export default function App() {
         )}
 
         {isLoading ? (
-          <p className="text-center text-slate-500">
-            Loading tasks… (the free API host may take up to a minute to wake up)
-          </p>
+          <p className="text-center text-slate-500">Loading tasks…</p>
         ) : (
           !loadFailed && <TaskList tasks={tasks} onUpdate={updateTask} onDelete={deleteTask} />
         )}

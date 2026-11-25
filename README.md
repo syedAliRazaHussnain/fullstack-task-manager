@@ -4,8 +4,6 @@ A small full-stack CRUD app: add, edit, delete and complete tasks. It has a Reac
 
 **Live demo:** _coming soon_ · **API:** _coming soon_
 
-> The API runs on Render's free tier, which sleeps after 15 idle minutes. The first request after that can take 30–60 seconds while it wakes up. After that it's fast.
-
 ## Features
 
 - Responsive task list that works on phone and desktop
@@ -25,16 +23,17 @@ A small full-stack CRUD app: add, edit, delete and complete tasks. It has a Reac
 | Database | PostgreSQL 16 via `pg` (plain SQL, parameterized queries) |
 | Tests | Vitest + Supertest (API, against a real Postgres), Vitest + Testing Library (UI) |
 | CI | GitHub Actions: typecheck, lint, test and build on every push |
-| Hosting | Vercel (frontend), Render (API), Neon (Postgres) |
+| Hosting | Vercel (frontend + API as a serverless function), Neon (Postgres) |
 
 ## Project structure
 
 ```
 ├─ docker-compose.yml        # local Postgres (dev + test databases)
-├─ render.yaml               # Render deploy config for the API
 ├─ server/                   # Express API
+│  ├─ api/index.js           # Vercel serverless entry point (exports the Express app)
+│  ├─ vercel.json            # Vercel build + routing config for the API
 │  ├─ src/
-│  │  ├─ index.ts            # starts the HTTP server, graceful shutdown
+│  │  ├─ index.ts            # starts the HTTP server locally, graceful shutdown
 │  │  ├─ app.ts              # builds the Express app (middleware + routes)
 │  │  ├─ config.ts           # validates environment variables at startup
 │  │  ├─ errors.ts           # HttpError (status + message)
@@ -184,15 +183,19 @@ CREATE TABLE IF NOT EXISTS tasks (
 - **PATCH instead of PUT.** Marking a task done sends only `{ "completed": true }`. Fields that aren't sent are left alone, and `null` explicitly clears the description.
 - **One error handler.** Handlers just `throw`. Express 5 forwards errors from async handlers automatically, and a single middleware maps them to `400/404/413/500` with a consistent JSON shape.
 - **Fail fast on config.** Env vars are validated at startup, so a missing `DATABASE_URL` stops the server with a clear message instead of failing on the first request.
-- **`createApp()` separate from `listen()`.** Tests pass the app straight to Supertest. No port is opened and nothing is mocked: the tests run real SQL against a separate test database.
+- **`createApp()` separate from `listen()`.** Tests pass the app straight to Supertest. No port is opened and nothing is mocked: the tests run real SQL against a separate test database. The same separation lets Vercel run the app as a serverless function (`api/index.js`), while `src/index.ts` runs it as a normal server locally.
 - **Server-confirmed UI updates.** The frontend updates its state from the server's response instead of guessing, so the screen always matches the database. Buttons are disabled while a request is in flight to prevent double submits.
 - **Security basics.** CORS allows only the configured frontend origin, request bodies are capped at 10 KB, `x-powered-by` is disabled, 500 errors never leak internals, and secrets live only in environment variables.
 
 ## Deployment
 
-- **Database:** a Neon free-tier Postgres project. Its connection string is the API's `DATABASE_URL`.
-- **API:** Render free web service, configured in [`render.yaml`](render.yaml). It builds with `npm ci --include=dev && npm run build`, runs the migration on start, and uses `/api/health` as its health check.
-- **Frontend:** Vercel with root directory `client` and `VITE_API_URL` set to the Render URL. The Render service's `CORS_ORIGIN` is set to the Vercel URL.
+Two Vercel projects from this one repo, plus a Neon database. All are on free tiers.
+
+- **Database:** a Neon Postgres project (AWS US East, Ohio). I used its pooled connection string as the API's `DATABASE_URL`, since serverless functions open many short-lived connections.
+- **API:** a Vercel project with root directory `server`. [`server/vercel.json`](server/vercel.json) runs `npm run build && npm run db:migrate:prod` (the migration is idempotent, so it's safe on every deploy). It routes every path to [`server/api/index.js`](server/api/index.js), which exports the Express app as a serverless function. Env vars: `DATABASE_URL` and `CORS_ORIGIN` (the frontend URL).
+- **Frontend:** a Vercel project with root directory `client` (Vite is detected automatically). Env var: `VITE_API_URL` (the API URL).
+
+Pushing to `main` redeploys both. GitHub Actions runs the tests on the same push.
 
 ## What I'd add next
 
